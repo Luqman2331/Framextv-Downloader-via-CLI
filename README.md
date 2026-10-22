@@ -27,17 +27,16 @@ pip install requests textual
 
 ## How to use it (easy way)
 
-Run this command:
+Use this tool via CLI. Open a terminal in the tool's folder and run:
 
 ```bash
-python3 framextvdownload.py
+python3 framextvdownload.py "https://framextv.cc/watch/962697"
 ```
 
 Then:
-1. Paste a framextv link.
-2. Pick a quality.
-3. Pick subtitles.
-4. Wait for the download to finish.
+1. Pick a quality.
+2. Pick subtitles.
+3. Wait for the download to finish.
 
 The video will be in a folder called `dl_framextv_<id>/`.
 
@@ -71,7 +70,7 @@ Linux:
 cd ~/Downloads
 sudo xbps-install -S ffmpeg
 pip install requests textual
-python3 framextvdownload.py
+python3 framextvdownload.py "https://framextv.cc/watch/962697"
 ```
 
 Windows:
@@ -80,7 +79,7 @@ Windows:
 cd /d "%USERPROFILE%\Downloads"
 winget install -e --id Gyan.FFmpeg
 pip install requests textual
-python framextvdownload.py
+python framextvdownload.py "https://framextv.cc/watch/962697"
 ```
 
 Note for Windows: after you install ffmpeg, close the terminal and open a new one. Then run the tool.
