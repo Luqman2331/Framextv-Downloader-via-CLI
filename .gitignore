@@ -1,0 +1,8 @@
+# Output download (jangan upload video/subtitle yang didownload)
+dl_framextv_*/
+*.mp4
+*.srt
+*.part
+*.ts
+local.m3u8
+__pycache__/
