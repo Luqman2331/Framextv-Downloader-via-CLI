@@ -1,4 +1,4 @@
-# framextvdownloadercli
+# framextvdownloaderviacli
 
 This tool downloads videos from framextv.cc.
 
