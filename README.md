@@ -1,85 +1,51 @@
-# framextvdownloader
+# framextvdownloadercli
 
 This tool downloads videos from framextv.cc.
 
-## What it does
+## What it does and How to use
 
-- It downloads movies and TV shows.
-- First, you pick the video quality.
-- Then, you pick the subtitles.
-- Subtitles are saved as separate `.srt` files.
-- The subtitles are NOT inside the video file.
-- It works with `/watch/` links and `/movie/` links. Example: https://framextv.cc/watch/1101412 and https://framextv.cc/movie/1101412
-- For TV shows, use `/watch/<id>/<season>/<episode>`.
+- It downloads videos and subtitles (`.srt` files).
+- Run this(before run this command check the Requirements):
+
+```bash
+  python3 framextvdownload.py
+```
+
+  Then the UI will appear.
+
+- First, click your video want to watch and copy a video link from the web. Example: https://framextv.cc/movie/969681
+- Then, paste the link in the UI and press Enter or click Download.
+- Then, pick the quality.
+- Then, pick the subtitle in your main language, if available. Press Space or click a track to pick it, then press Enter to start the download.
+- Subtitles are saved as separate `.srt` files. The subtitles are NOT inside the video file. To watch with subtitles, use VLC or a media player that can load a separate `.srt` file.
+- For TV shows, use `/watch/<id>/<season>/<episode>`. Example: https://framextv.cc/watch/335032/1/1
 - If a download stops, you can run it again. It will continue.
 - After a download finishes, the video pieces (`.ts` files) are deleted by themselves. Use `--no-clean` to keep them.
 - If a video part fails, the tool will try again by itself.
+- The video will be in a folder called `dl_framextv_<id>/`.
 
-## What you need
+##  Requirements.
 
 - Python 3
 - ffmpeg (it must be in your PATH)
-- These Python packages:
-
-```bash
-pip install requests textual
-```
-
-## How to use it (easy way)
-
-Use this tool via CLI. Open a terminal in the tool's folder and run:
-
-```bash
-python3 framextvdownload.py "https://framextv.cc/watch/962697"
-```
-
-Then:
-1. Pick a quality.
-2. Pick subtitles.
-3. Wait for the download to finish.
-
-The video will be in a folder called `dl_framextv_<id>/`.
-
-## How to use it (command line)
-
-Movie:
-
-```bash
-python3 framextvdownload.py "https://framextv.cc/watch/962697" --quality 1080
-```
-
-TV show:
-
-```bash
-python3 framextvdownload.py "https://framextv.cc/watch/335032/1/1" --quality 720
-```
-
-Pick subtitles without asking:
-
-```bash
-python3 framextvdownload.py "https://framextv.cc/watch/962697" --quality 1080 --subs ms,en,id
-python3 framextvdownload.py URL --subs all
-python3 framextvdownload.py URL --no-subs
-```
-
-## Run it on another computer
-
-Linux:
-
-```bash
-cd ~/Downloads
-sudo xbps-install -S ffmpeg
-pip install requests textual
-python3 framextvdownload.py "https://framextv.cc/watch/962697"
-```
-
-Windows:
+- Windows:
 
 ```cmd
-cd /d "%USERPROFILE%\Downloads"
-winget install -e --id Gyan.FFmpeg
-pip install requests textual
-python framextvdownload.py "https://framextv.cc/watch/962697"
+    winget install -e --id Gyan.FFmpeg
+```
+
+    Note for Windows: after you install ffmpeg, close the terminal and open a new one.
+
+- Linux:
+
+```bash
+    sudo xbps-install -S ffmpeg
+```
+
+- These Python packages for window and linux:
+
+```bash
+  pip install requests textual
 ```
 
 Note for Windows: after you install ffmpeg, close the terminal and open a new one. Then run the tool.

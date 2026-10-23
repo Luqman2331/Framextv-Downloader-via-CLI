@@ -1346,7 +1346,12 @@ if HAS_TEXTUAL:
 
     class TuiSubtitleScreen(Screen):
         """LANGKAH 2 (selepas pilih resolution): pilih subtitle.
-        Enter/Space = toggle track, a = semua, n = tiada, d = mula download.
+        Space/klik track = toggle track, Enter = mula download,
+        a = semua, n = tiada, d = mula download.
+        Enter atas track yang di-highlight tapi belum ditick akan
+        download track tu (bukan download tanpa subtitle) — kecuali
+        user dah tekan n (tiada) dulu. Klik butang MULA DOWNLOAD pula
+        ikut tick semasa (tiada tick + tiada n = track highlight).
         Subtitle keluar sebagai .srt berasingan sebelah MP4, tak di-mux."""
         BINDINGS = [("q", "app.quit", "Keluar"),
                     ("a", "select_all", "Semua"),
@@ -1358,6 +1363,9 @@ if HAS_TEXTUAL:
             super().__init__()
             self.ch, self.url = ch, url
             self.selected = set()
+            # True hanya lepas user tekan n (tiada) — supaya fallback
+            # track-highlight dalam start() tak langgar niat "tiada".
+            self._explicit_none = False
 
         def compose(self) -> ComposeResult:
             yield Header(show_clock=False)
@@ -1371,7 +1379,7 @@ if HAS_TEXTUAL:
                     else:
                         yield Label("Tiada subtitle untuk tajuk ni.", id="snone")
                     yield Button("⬇  MULA DOWNLOAD", id="gostart", variant="primary")
-                    yield Label("Enter/Space toggle · a semua · n tiada · d mula · Esc kembali", id="hint")
+                    yield Label("Space/klik pilih · Enter mula download · a semua · n tiada · d mula · Esc kembali", id="hint")
             yield Footer()
 
         def on_mount(self):
@@ -1392,12 +1400,22 @@ if HAS_TEXTUAL:
                 self.selected.discard(idx)
             else:
                 self.selected.add(idx)
+            self._explicit_none = False
             self._refresh()
 
         def on_key(self, event):
+            # BUG 2026-10-23: Enter dulu trigger ListView.Selected =
+            # toggle sahaja, download tak mula. Sekarang Enter = mula
+            # download (stop event supaya Selected/Button tak double).
+            # Disahkan pilot Textual 8.2.8: Enter atas list DAN atas
+            # butang dua-dua jadi satu start() sahaja, klik list masih
+            # Selected = toggle, klik butang masih Pressed = start.
+            if event.key == "enter":
+                self.start()
+                event.stop()
             # Space dalam ListView Textual tak trigger Selected — jadi
             # tangkap sendiri supaya hint "Space toggle" betul-betul jalan.
-            if event.key == "space" and self.query("#slist"):
+            elif event.key == "space" and self.query("#slist"):
                 self._toggle(self.query_one("#slist", ListView).index)
                 event.stop()
 
@@ -1423,10 +1441,12 @@ if HAS_TEXTUAL:
         def action_select_all(self):
             subs = getattr(self.ch, "all_subtitles", []) or []
             self.selected = set(range(len(subs)))
+            self._explicit_none = False
             self._refresh()
 
         def action_select_none(self):
             self.selected = set()
+            self._explicit_none = True
             self._refresh()
 
         def action_back(self):
@@ -1438,6 +1458,13 @@ if HAS_TEXTUAL:
         def start(self):
             subs = getattr(self.ch, "all_subtitles", []) or []
             chosen = [subs[i] for i in sorted(self.selected) if i < len(subs)]
+            if not chosen and not self._explicit_none and self.query("#slist"):
+                # Tiada tick tapi ada track di-highlight: download track
+                # tu, bukan video tanpa subtitle. Tekan n dulu kalau
+                # memang nak tiada subtitle.
+                idx = self.query_one("#slist", ListView).index
+                if idx is not None and idx < len(subs):
+                    chosen = [subs[idx]]
             self.app.pop_screen()
             self.app.push_screen(TuiDownloadScreen(self.ch, self.url, selected_subs=chosen))
 
