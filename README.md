@@ -5,7 +5,7 @@ This tool downloads videos from framextv.cc.
 ## What it does and How to use
 
 - It downloads videos and subtitles (`.srt` files).
-- Download scripts framextcdownload.py and Run this(before run this command check the Requirements):
+- Download scripts framextcdownload.py and Run(before run this command check the Requirements):
 ```bash
   python3 framextvdownload.py
 ```
