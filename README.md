@@ -49,5 +49,3 @@ This tool downloads videos from framextv.cc.
 
 Note for Windows: after you install ffmpeg, close the terminal and open a new one. Then run the tool.
 
-
-IF THIS NOT WORKING OR BUGS YOU CAN TELL YOUR AI TO FIX IT BCS IT ALSO MADE AI.
