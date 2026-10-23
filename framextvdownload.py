@@ -1,49 +1,11 @@
 #!/usr/bin/env python3
 """
-framextvdownload.py - HLS downloader untuk framextv.cc/.xyz/.tech
+framextvdownload.py - download videos from framextv.cc
 
-Hasil RE 2026-10-21 (test & error):
-- Player framextv guna provider "movy" (api.wecollege.net). Flow:
-  1. seed  <- GET /seed?mediaId={tmdbId}          (ttl 30s)
-  2. sources <- GET /{atlanta|dallas|miami}/sources
-     ?mediaType=tv|movie&tmdbId={id}&enc=2&seed={seed}&seasonId=&episodeId=
-  3. respons di-decrypt cipher XOR (magic "mvm1") -> JSON {sources:[{quality,url}]}
-  4. m3u8 + segmen MPEG-TS (perlu header Referer/Origin movy.bz) -> concat -> MP4
-- PERANGKAP UTAMA: seed diikat pada IP egress. Kalau seed fetch dan sources
-  call guna connection berbeza (proxy rotate IP), server balas
-  STREAMCRYPTO_SEED_INVALID (401). Penyelesaian: SATU requests.Session
-  (connection reuse) untuk seed + sources. Diuji sah dari VM 2026-10-21.
-- Segmen tiada extension -> ffmpeg perlu -allowed_extensions ALL, atau
-  download segmen manual + concat (cara tool ni buat, macam pinayflix).
-- /api/details TIDAK perlu auth (bagi tajuk). /api/stream framextv sendiri
-  perlu client key (tak diteroka — laluan movy dah cukup).
-
-Usage:
-  python3 framextvdownload.py                  # TUI ala pinayflix (perlu: pip install textual)
-  python3 framextvdownload.py URL1 URL2 ...   # CLI batch
-  python3 framextvdownload.py URL [--quality 720] [--workers 8] [--no-clean]
-  # Nota: segmen .ts AUTO dipadam lepas download siap (CLI + TUI).
-  # --no-clean simpan segmen (untuk debug sahaja).
-  python3 framextvdownload.py URL1 URL2 --parallel 2   # 2 video serentak
-  URL: https://framextv.cc/watch/335032/1/1  (TV: /watch/{tmdb}/{season}/{ep})
-       https://framextv.cc/watch/550           (movie)
-       https://framextv.cc/movie/550           (movie, format detail page — sama je)
-
-Subtitle (gabung framextv_subs.py, 2026-10-23):
-  Lepas pilih resolution, pilih subtitle pulak — CLI interaktif akan
-  tunjuk senarai subtitle dan minta pilihan; TUI ada skrin picker
-  selepas skrin kualiti. Subtitle TIDAK di-mux ke dalam MP4: ia
-  didownload sebagai fail .srt BERASINGAN sebelah MP4, nama
-  <Tajuk> [<id>].<kod>.srt (bahasa berulang: .en.srt, .en-2.srt).
-  Flag: --subs ms,en,id | --subs all | --subs none | --subs 0,5
-        --no-subs = shortcut untuk --subs none
-  --subs 0 = track pertama (bukan "tiada" — Enter kosong je tiada).
-  Kalau --subs tak diberi: CLI interaktif prompt per video; mod
-  parallel / bukan-tty default subtitle = tiada (elak prompt berebut
-  dan elak download 34 track senyap-senyap) — guna --subs untuk pilih.
-  Queue TUI / refresh sources: pilihan subtitle dipadankan semula ikut
-  kod bahasa + bilangan per kod pada tajuk semasa, supaya URL subtitle
-  tajuk lama (atau URL expired lepas refresh) tak terbawa ke video lain.
+Run:
+  python3 framextvdownload.py
+Then paste a link, pick quality, pick subtitles, download.
+Subtitles are saved as separate .srt files.
 """
 import argparse, base64, collections, concurrent.futures as cf, glob, json, math, os, re, shutil, subprocess, sys, tempfile, threading, time
 import urllib.error, urllib.request
