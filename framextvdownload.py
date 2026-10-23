@@ -73,13 +73,13 @@ def pick_numbered(title, options, default=0):
             return options[default][1]
         if s.isdigit() and int(s) < len(options):
             return options[int(s)][1]
-        print("  nombor tak sah, cuba lagi")
+        print("  invalid number, try again")
 
 
 def parse_watch_url(url):
-    """Return (tmdb:int, media_type, season, episode) atau None.
-    Terima /watch/<id>[/<season>/<ep>] DAN /movie/<id> (format detail
-    page — TMDB id sama, jadi Chain/sources jalan sama je)."""
+    """Return (tmdb:int, media_type, season, episode) or None.
+    Accepts /watch/<id>[/<season>/<ep>] AND /movie/<id> (detail-page
+    format — same TMDB id, so Chain/sources work the same)."""
     m = re.search(r"/watch/(\d+)(?:/(\d+)/(\d+))?", url)
     if m:
         tmdb = int(m.group(1))
@@ -92,11 +92,11 @@ def parse_watch_url(url):
     return None
 
 
-# ---------------------------------------------------------------- subtitle (gabung dari framextv_subs.py)
-# Player framextv gabung stream subtitles + /api/subtitles, dedup ikut URL.
-# /api/subtitles tak perlu auth; movy pula 0-1 track (Our Father: 0).
-# Metadata tulis format "vtt" tapi fail strem.io sebenarnya sudah SRT,
-# fail titan pula betul-betul VTT — download ikut isi, bukan metadata.
+# ---------------------------------------------------------------- subtitle (merged from framextv_subs.py)
+# The framextv player merges stream subtitles + /api/subtitles, dedup by URL.
+# /api/subtitles needs no auth; movy has 0-1 tracks (Our Father: 0).
+# Metadata says format "vtt" but strem.io files are actually already SRT,
+# titan files are real VTT — download by content, not metadata.
 LANG_NAMES = {
     "en": "English", "ms": "Malay", "id": "Indonesian", "es": "Spanish",
     "fr": "French", "de": "German", "it": "Italian", "pt": "Portuguese",
@@ -112,8 +112,8 @@ LANG_NAMES = {
 
 
 def normalize_lang(raw):
-    """Return kod bahasa ternormal. Movy: 'English - eng' -> 'en'.
-    WAJIB ada space sekeliling hyphen supaya zh-tw / pt-br tak rosak."""
+    """Return a normalized language code. Movy: 'English - eng' -> 'en'.
+    Spaces around the hyphen are REQUIRED so zh-tw / pt-br are not broken."""
     raw = (raw or "").strip().lower()
     if raw == "tw":
         return "zh-tw"
@@ -127,7 +127,7 @@ def normalize_lang(raw):
 
 
 def normalize_sub(s, source=""):
-    """Samakan bentuk dict subtitle merentas sumber: url/lang/label/source."""
+    """Normalize the subtitle dict shape across sources: url/lang/label/source."""
     lang = normalize_lang(s.get("lang") or s.get("language") or "")
     label = (s.get("label") or "").replace("Subtitles • ", "").replace("Subtitles ", "").strip()
     if not label and s.get("lang"):
@@ -158,8 +158,8 @@ def merge_subs(primary, secondary):
 
 
 def fetch_framextv_subs(tmdb, media_type, season, episode, page=""):
-    """Sumber A: /api/subtitles (stdlib, tak perlu requests/auth).
-    Return (list_subtitle_ternormal, base_yang_berjaya) atau ([], None)."""
+    """Source A: /api/subtitles (stdlib, no requests/auth needed).
+    Return (normalized subtitle list, successful base) or ([], None)."""
     for base in API_BASES:
         q = f"{base}/api/subtitles?id={tmdb}&type={media_type}"
         if media_type == "tv":
@@ -177,14 +177,14 @@ def fetch_framextv_subs(tmdb, media_type, season, episode, page=""):
 
 
 def parse_sub_selection(raw, subs):
-    """Tukar pilihan user jadi list track. raw: 'all' | 'none' | 'ms,en' | '0,5'.
-    Return list track (boleh kosong). Nilai tak sah dilangkau senyap."""
+    """Turn the user choice into a track list. raw: 'all' | 'none' | 'ms,en' | '0,5'.
+    Return a track list (may be empty). Invalid values are skipped silently."""
     if raw is None:
         return None
     raw = str(raw).strip().lower()
     if raw in ("", "none", "no"):
         return []
-    # "0" sahaja = indeks track pertama, BUKAN tiada (dulu bug: "0" -> []).
+    # "0" alone = first track index, NOT none (old bug: "0" -> []).
     if raw == "all":
         return list(subs)
     out, seen = [], set()
@@ -205,16 +205,16 @@ def parse_sub_selection(raw, subs):
 
 
 def subs_for_selection(selected, current):
-    """Padankan pilihan subtitle lama ke senarai subtitle SEMASA.
-    Dipanggil masa download subtitle, bukan masa pilih — supaya lepas
-    refresh sources, atau untuk tajuk queue seterusnya dalam TUI, URL
-    lama (expired / tajuk lain) tak terbawa. Peraturan:
-    - selected None -> None (semua track semasa)
-    - selected [] -> [] (tiada)
-    - kalau semua URL terpilih masih ada dalam senarai semasa -> guna
-      terus (paling tepat: kekal bezakan en vs en-2)
-    - kalau tak, padan ikut kod bahasa + bilangan per kod (cth: pilih
-      1x en -> ambil en pertama tajuk semasa, bukan semua en)."""
+    """Match an old subtitle choice to the CURRENT subtitle list.
+    Called at subtitle download time, not at pick time — so after
+    a sources refresh, or for the next queued title in the TUI, old
+    URLs (expired / other title) are not carried over. Rules:
+    - selected None -> None (all current tracks)
+    - selected [] -> [] (none)
+    - if all chosen URLs are still in the current list -> use
+      them directly (most accurate: still distinguishes en vs en-2)
+    - otherwise, match by language code + count per code (e.g. pick
+      1x en -> take the first en of the current title, not all en)."""
     if selected is None:
         return None
     if not selected:
@@ -238,13 +238,13 @@ def subs_for_selection(selected, current):
 
 
 def prompt_sub_selection(subs):
-    """Picker interaktif CLI (dipanggil SELEPAS kualiti dipilih).
-    Taip nombor / kod bahasa dipisah koma, 'all', atau Enter kosong = tiada."""
-    print("\nPilih subtitle (fail .srt berasingan, TIDAK di-mux ke MP4):")
+    """Interactive CLI picker (called AFTER quality is picked).
+    Type numbers / comma-separated language codes, 'all', or empty Enter = none."""
+    print("\nPick subtitles (separate .srt files, NOT muxed into the MP4):")
     for i, s in enumerate(subs):
         print(f"  [{i:2d}] {s['lang'] or '?':6s} {sub_display(s)}  [{s['source']}]")
     try:
-        raw = input("Pilih (cth: 25 / ms,en / all / Enter kosong = tiada) > ").strip()
+        raw = input("Pick (e.g. 25 / ms,en / all / empty Enter = none) > ").strip()
     except (EOFError, KeyboardInterrupt):
         print()
         return []
@@ -254,15 +254,15 @@ def prompt_sub_selection(subs):
 
 
 def resolve_sub_selection(ch, a):
-    """Tentukan subtitle yang didownload untuk satu video, ikut flag / mod.
-    Dipanggil selepas Chain dibina (senarai subtitle dah ada)."""
+    """Decide which subtitles to download for one video, by flag / mode.
+    Called after the Chain is built (subtitle list already exists)."""
     if getattr(a, "no_subs", False):
         return []
     subs_flag = getattr(a, "subs", None)
     if subs_flag is not None:
         return parse_sub_selection(subs_flag, ch.all_subtitles)
     if getattr(a, "parallel", 1) and a.parallel > 1:
-        return []  # prompt dari banyak thread akan berebut stdin
+        return []  # prompts from many threads would fight over stdin
     if sys.stdin.isatty():
         return prompt_sub_selection(ch.all_subtitles)
     return list(ch.all_subtitles)
@@ -274,7 +274,7 @@ class HttpError(Exception):
         self.code = code
 
 
-# ---------------------------------------------------------------- cipher XOR (dari Player JS, fungsi w/ce/le/ae/oe/se)
+# ---------------------------------------------------------------- cipher XOR (from Player JS, functions w/ce/le/ae/oe/se)
 _M32 = 0xFFFFFFFF
 
 
@@ -379,7 +379,7 @@ def fetch(url, referer, timeout=40):
     except HttpError:
         raise
     except Exception as e:
-        log(f"urllib gagal ({type(e).__name__}), tukar ke curl...")
+        log(f"urllib failed ({type(e).__name__}), switching to curl...")
         _USE_CURL = True
         return _fetch_curl(url, referer, timeout)
 
@@ -392,7 +392,7 @@ def _fetch_urllib(url, referer, timeout=40):
             data = r.read()
             cl = r.headers.get("Content-Length")
             if cl and cl.isdigit() and len(data) != int(cl):
-                raise IOError(f"terpotong {len(data)}/{cl}")
+                raise IOError(f"truncated {len(data)}/{cl}")
             return data
     except urllib.error.HTTPError as e:
         raise HttpError(e.code)
@@ -400,7 +400,7 @@ def _fetch_urllib(url, referer, timeout=40):
 
 def _fetch_curl(url, referer, timeout=40):
     if not shutil.which("curl"):
-        raise RuntimeError("curl tiada dalam PATH")
+        raise RuntimeError("curl is not in PATH")
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".fxdl")
     tmp.close()
     try:
@@ -432,8 +432,8 @@ def _fetch_curl(url, referer, timeout=40):
             raise IOError(f"curl HTTP {code}")
         if clen and len(data) != clen:
             raise IOError(f"terpotong {len(data)}/{clen}")
-        # Respons 200 kosong (b"") DIKEMBALIKAN, bukan error: lapisan segmen
-        # yang tentukan (segmen 0 byte = lubang dari server -> dilangkau).
+        # An empty 200 response (b"") is RETURNED, not an error: the segments
+        # layer decides (a 0-byte segments = a hole from the server -> skipped).
         return data
     finally:
         try:
@@ -452,7 +452,7 @@ def fetch_retry(url, referer, tries=4, base_sleep=2, min_bytes=1):
             data = fetch(url, referer)
             if len(data) >= min_bytes:
                 return data
-            last = IOError("respons terlalu kecil")
+            last = IOError("response too small")
         except HttpError as e:
             if e.code in (401, 403, 410):
                 raise
@@ -460,12 +460,12 @@ def fetch_retry(url, referer, tries=4, base_sleep=2, min_bytes=1):
         except Exception as e:
             last = e
         time.sleep(base_sleep * (i + 1))
-    raise RuntimeError(f"gagal fetch {url[:90]}: {last}")
+    raise RuntimeError(f"failed to fetch {url[:90]}: {last}")
 
 
-# ---------------------------------------------------------------- Chain: URL -> sources -> playlist -> segmen
+# ---------------------------------------------------------------- Chain: URL -> sources -> playlist -> segments
 class Chain:
-    """Pegang URL segmen semasa. refresh() dikongsi & thread-safe (ikut generation)."""
+    """Hold the current segments URL. refresh() is shared & thread-safe (by generation)."""
 
     def __init__(self, page, quality=None):
         self.page, self.quality = page, quality
@@ -485,9 +485,9 @@ class Chain:
         return ""
 
     def _sources(self, tmdb, media_type, season, episode):
-        """Seed + sources MESTI satu session (IP-bound seed)."""
+        """Seed + sources MUST share one session (IP-bound seed)."""
         if not HAS_REQUESTS:
-            raise RuntimeError("perlu 'pip install requests' (seed diikat pada connection)")
+            raise RuntimeError("needs 'pip install requests' (seed is tied to the connection)")
         from urllib.parse import urlencode
         sess = requests.Session()
         headers = {"User-Agent": UA, "Origin": ORIGIN, "Referer": REFERER}
@@ -501,7 +501,7 @@ class Chain:
                     q["episodeId"] = str(episode)
                 r = sess.get(f"{MOVY}/{prov}/sources?{urlencode(q)}", headers=headers, timeout=30)
                 if r.status_code != 200:
-                    # Sertakan mesej body supaya debug tak buta (dulu: kod sahaja)
+                    # Include the body message so debugging is not blind (before: code only)
                     last_err = f"{prov} HTTP {r.status_code}: {r.text.strip()[:100]}"
                     continue
                 raw = r.text.strip()
@@ -511,29 +511,29 @@ class Chain:
                 data = json.loads(decrypt_sources(raw, seed, tmdb))
                 if data.get("sources"):
                     return data, prov
-                last_err = f"{prov}: tiada sources"
+                last_err = f"{prov}: no sources"
             except Exception as e:
                 last_err = f"{prov}: {type(e).__name__}: {str(e)[:100]}"
-        raise RuntimeError(f"semua provider gagal ({last_err})")
+        raise RuntimeError(f"all providers failed ({last_err})")
 
     def build(self):
         parsed = parse_watch_url(self.page)
         if not parsed:
-            raise RuntimeError("URL tak sah (cth: https://framextv.cc/watch/335032/1/1 atau /movie/550)")
+            raise RuntimeError("Invalid URL (e.g. https://framextv.cc/watch/335032/1/1 or /movie/550)")
         tmdb, media_type, season, episode = parsed
         self.tmdb, self.media_type, self.season, self.episode = tmdb, media_type, season, episode
         self.title = self._title(tmdb, media_type)
         data, prov = self._sources(tmdb, media_type, season, episode)
         self.provider = prov
-        # Subtitle movy (dalam sources) + subtitle framextv (/api/subtitles),
-        # gabung ikut cara player (dedup URL). movy selalunya 0-1 track.
+        # Movy subtitles (in sources) + framextv subtitles (/api/subtitles),
+        # merged the way the player does (dedup by URL). movy usually has 0-1 tracks.
         movy_subs = [normalize_sub(s, f"movy/{prov}") for s in (data.get("subtitles") or []) if s.get("url")]
         fx_subs, fx_base = fetch_framextv_subs(tmdb, media_type, season, episode, self.page)
         self.movy_subtitles, self.fx_subtitles, self.fx_base = movy_subs, fx_subs, fx_base
         self.all_subtitles = merge_subs(fx_subs, movy_subs)
-        self.subtitles = self.all_subtitles  # serasi dengan kod lama
+        self.subtitles = self.all_subtitles  # old-code compatible
 
-        # pilih kualiti: quality = tinggi maksimum (cth 720) atau None = tertinggi
+        # pick quality: quality = max height (e.g. 720) or None = highest
         def qnum(s):
             m = re.search(r"(\d+)", s.get("quality", ""))
             return int(m.group(1)) if m else 0
@@ -547,8 +547,8 @@ class Chain:
         self.chosen = chosen
         if self.gen == 0 and not QUIET:
             with _PRINT_LOCK:
-                print("    kualiti tersedia:", ", ".join(v["quality"] for v in self.variants), flush=True)
-                print(f"    dipilih: {chosen['quality']} (provider {prov})", flush=True)
+                print("    qualities available:", ", ".join(v["quality"] for v in self.variants), flush=True)
+                print(f"    picked: {chosen['quality']} (provider {prov})", flush=True)
 
         md = fetch_retry(chosen["url"], REFERER, min_bytes=100).decode("utf-8", "ignore")
         urls, durs, pending = [], [], None
@@ -561,7 +561,7 @@ class Chain:
                 durs.append(pending)
                 pending = None
         if not urls:
-            raise RuntimeError("tiada segmen dalam media playlist")
+            raise RuntimeError("no segments in the media playlist")
         seq = re.search(r"#EXT-X-MEDIA-SEQUENCE:(\d+)", md)
 
         self.seg_urls, self.extinfs = urls, durs
@@ -575,15 +575,15 @@ class Chain:
     def refresh_if_stale(self, seen_gen):
         with self.lock:
             if self.gen == seen_gen:
-                log("Segmen tamat (403?) -> refresh sources + playlist...")
+                log("Segments ended (403?) -> refresh sources + playlist...")
                 self.build()
             return self.gen
 
 
 # ---------------------------------------------------------------- download
 def _vtt_ts(t):
-    """Normalkan timestamp VTT ke SRT: HH:MM:SS.mmm atau MM:SS.mmm
-    -> HH:MM:SS,mmm. Dulu: MM:SS.mmm digugurkan terus (regex HH sahaja)."""
+    """Normalize a VTT timestamp to SRT: HH:MM:SS.mmm or MM:SS.mmm
+    -> HH:MM:SS,mmm. Before: MM:SS.mmm was dropped entirely (HH-only regex)."""
     parts = t.split(":")
     if len(parts) == 2:
         mm, ss = parts
@@ -592,9 +592,9 @@ def _vtt_ts(t):
 
 
 def vtt_to_srt(text):
-    """Tukar WebVTT ke SRT (kalau provider bagi .vtt).
-    Sokong timestamp HH:MM:SS.mmm DAN MM:SS.mmm; setting selepas
-    timestamp (cth position:...) diabaikan, tag HTML dibuang."""
+    """Convert WebVTT to SRT (if the provider gives .vtt).
+    Supports HH:MM:SS.mmm AND MM:SS.mmm timestamps; settings after
+    the timestamp (e.g. position:...) are ignored, HTML tags are removed."""
     ts_pat = re.compile(r"(\d+:\d+(?::\d+)?\.\d+)\s*-->\s*(\d+:\d+(?::\d+)?\.\d+)")
     lines = text.splitlines()
     out = []
@@ -625,25 +625,25 @@ def print_summary(res):
         print(sep)
         print(f"Status   : {res['status']}")
         print(f"Video    : {res['vid']}")
-        print(f"Kualiti  : {res['quality']}")
+        print(f"Quality  : {res['quality']}")
         if res["size"]:
-            print(f"Saiz     : {fmt_size(res['size'])}")
-        print(f"Lokasi   : {res['path']}")
+            print(f"Size     : {fmt_size(res['size'])}")
+        print(f"Location : {res['path']}")
         for s in res.get("subs") or []:
             print(f"Subtitle : {s}")
-        print(f"Masa     : {res['elapsed']:.1f}s")
+        print(f"Time     : {res['elapsed']:.1f}s")
         print(sep, flush=True)
 
 
 class DownloadJob:
-    """Satu job download. Dikongsi oleh CLI dan TUI (satu engine sahaja).
-    states: 0=tunggu 1=aktif 2=siap 3=gagal 4=kosong dari server (dilangkau).
-    Kawalan: cancel_ev, run_ev (clear = pause)."""
+    """One download job. Shared by CLI and TUI (one engine only).
+    states: 0=waiting 1=active 2=done 3=failed 4=empty from server (skipped).
+    Controls: cancel_ev, run_ev (clear = pause)."""
 
     def __init__(self, page, ch, workers=8, clean=True, emit=None, no_subs=False, selected_subs=None):
         self.page, self.ch, self.workers, self.clean, self.no_subs = page, ch, workers, clean, no_subs
-        # selected_subs: None = semua track gabung (serasi kod lama);
-        # [] = tiada subtitle; list track = hanya yang dipilih user.
+        # selected_subs: None = all merged tracks (old-code compatible);
+        # [] = no subtitles; track list = only tracks the user picked.
         self.selected_subs = selected_subs
         self.emit = emit or (lambda kind, **kw: None)
         parsed = parse_watch_url(page)
@@ -692,7 +692,7 @@ class DownloadJob:
             except OSError:
                 pass
         self.result["status"] = "STOPPED"
-        self.emit("log", msg="Dihentikan. Jalankan semula untuk resume.")
+        self.emit("log", msg="Stopped. Run again to resume.")
         self.emit("stopped")
 
     def speed(self):
@@ -729,18 +729,18 @@ class DownloadJob:
             try:
                 data = fetch(url, referer)
                 if len(data) == 0:
-                    # Server balas HTTP 200 tapi 0 byte: segmen memang kosong
-                    # dari sumber (lubang encoding, disahkan 720p E2#264/E3#244).
-                    # Jangan retry sia-sia — tanda kosong & langkau masa merge.
+                    # Server answered HTTP 200 but 0 bytes: the segments is genuinely empty
+                    # from the source (an encoding hole, confirmed on 720p E2#264/E3#244).
+                    # Do not retry in vain — mark empty & skip at merge time.
                     self.states[n - 1] = 4
                     with self.lock:
                         self.done_count += 1
                         dc = self.done_count
-                    self.emit("log", msg=f"Segmen {n} kosong dari server (0 byte) - dilangkau")
+                    self.emit("log", msg=f"Segment {n} empty from server (0 bytes) - skipped")
                     self.emit("progress", done=dc, total=self.total)
                     return True
                 if len(data) <= 1000:
-                    raise IOError("segmen tak sah")
+                    raise IOError("invalid segments")
                 tmp = self._sp(n) + ".part"
                 with open(tmp, "wb") as f:
                     f.write(data)
@@ -758,7 +758,7 @@ class DownloadJob:
                     try:
                         ch.refresh_if_stale(gen)
                     except Exception as ex:
-                        self.emit("log", msg=f"Refresh gagal: {ex}")
+                        self.emit("log", msg=f"Refresh failed: {ex}")
                         self._sleep(5)
                 else:
                     self._sleep(min(30, 3 * (attempt + 1)))
@@ -768,23 +768,23 @@ class DownloadJob:
         return False
 
     def download_subtitles(self):
-        """Download HANYA subtitle yang dipilih sebagai fail .srt BERASINGAN
-        sebelah MP4 (tidak di-mux/burn — merge MP4 guna local.m3u8 video
-        sahaja, tiada input subtitle). Nama: <video>.<kod>[-SDH][-2].srt
-        Jika selected_subs is None (kod lama / tanpa picker): semua track."""
+        """Download ONLY the picked subtitles as SEPARATE .srt files
+        next to the MP4 (not muxed/burned — the MP4 merge uses the local.m3u8 video
+        only, no subtitle input). Name: <video>.<code>[-SDH][-2].srt
+        If selected_subs is None (old code / no picker): all tracks."""
         if self.no_subs:
             return []
         all_subs = getattr(self.ch, "all_subtitles", None)
         if all_subs is None:
             all_subs = getattr(self.ch, "subtitles", []) or []
-        # Padankan semula ke senarai SEMASA (penting lepas refresh sources
-        # dan untuk tajuk queue TUI seterusnya — jangan download URL tajuk lama)
+        # Match again to the CURRENT list (important after a sources refresh
+        # and for the next TUI queue title — do not download the old title's URLs)
         subs = subs_for_selection(self.selected_subs, all_subs)
         if not subs:
-            self.emit("log", msg="Tiada subtitle dipilih")
+            self.emit("log", msg="No subtitles picked")
             return []
         base = os.path.splitext(self.out)[0]
-        # Kira ulangan per kod dalam pilihan ni sahaja (untuk -2, -3)
+        # Count repeats per code in this pick only (for -2, -3)
         counts = {}
         for s in subs:
             code = s.get("lang") or "sub"
@@ -805,26 +805,26 @@ class DownloadJob:
                 continue
             try:
                 data = self._fetch_subtitle(s)
-                # Buang BOM kalau ada — kalau tak, check WEBVTT gagal dan
-                # fail VTT disimpan verbatim sebagai .srt (rosak).
+                # Strip the BOM if present — otherwise the WEBVTT check fails and
+                # the VTT file is saved verbatim as .srt (broken).
                 while data.startswith(b"\xef\xbb\xbf"):
                     data = data[3:]
                 if data.lstrip().startswith(b"WEBVTT"):
                     data = vtt_to_srt(data.decode("utf-8", "ignore")).encode("utf-8")
-                # Kalau bukan WEBVTT, isi dah SRT (kes strem.io) -> verbatim
+                # If it is not WEBVTT, the content is already SRT (strem.io case) -> verbatim
                 if data.count(b"-->") == 0 or len(data) < 100:
-                    raise IOError("fail subtitle kosong / tiada cue")
+                    raise IOError("empty subtitle file / no cues")
                 with open(out, "wb") as f:
                     f.write(data)
                 saved.append(out)
                 self.emit("log", msg=f"Subtitle OK: {os.path.basename(out)}")
             except Exception as e:
-                self.emit("log", msg=f"Subtitle gagal ({code}): {e}")
+                self.emit("log", msg=f"Subtitle failed ({code}): {e}")
         return saved
 
     def _fetch_subtitle(self, s):
-        """Direct dulu (stdlib, Referer framextv, tiada Origin movy),
-        fallback proxy framextv, terakhir fetch_retry lama."""
+        """Direct first (stdlib, framextv Referer, no movy Origin),
+        framextv proxy fallback, last the old fetch_retry."""
         url = s["url"]
         try:
             req = urllib.request.Request(url, headers={"User-Agent": UA, "Referer": "https://framextv.cc/"})
@@ -873,10 +873,10 @@ class DownloadJob:
                 os.remove(f)
             except OSError:
                 pass
-        # Video dah ada: pilih MP4 paling besar (bukan glob order rawak
-        # kalau ada lebih dari satu mp4 dalam folder), dan samakan
-        # self.out dengan fail sebenar — kalau tak, subtitle disimpan
-        # ikut nama out yang lain, player tak auto-load subtitle tu.
+        # Video already exists: pick the largest MP4 (not raw glob order
+        # if there is more than one mp4 in the folder), and match
+        # self.out to the real file — otherwise, subtitles are saved
+        # under a different out name, and the player will not auto-load them.
         cands = [c for c in glob.glob(os.path.join(self.dir, "*.mp4"))
                  if os.path.getsize(c) > 0]
         if cands:
@@ -886,7 +886,7 @@ class DownloadJob:
             self.phase = "subs"
             subs = [] if self.no_subs else self.download_subtitles()
             self.result.update(status="SKIPPED", size=sz, path=cand, subs=subs)
-            self.emit("log", msg=f"Dah ada, skip: {cand}")
+            self.emit("log", msg=f"Already exists, skip: {cand}")
             self.emit("done", path=cand, size=sz, verify="", skipped=True)
             return
 
@@ -895,7 +895,7 @@ class DownloadJob:
         if self.est_total:
             free = shutil.disk_usage(self.dir).free
             if free < self.est_total * 1.6:
-                return self._fail(f"Ruang disk tak cukup: perlu ~{fmt_size(self.est_total * 1.6)}, ada {fmt_size(free)}")
+                return self._fail(f"Not enough disk space: need ~{fmt_size(self.est_total * 1.6)}, have {fmt_size(free)}")
 
         for n in range(1, self.total + 1):
             if self._valid(n):
@@ -903,7 +903,7 @@ class DownloadJob:
                 self.done_count += 1
                 self.bytes_done += os.path.getsize(self._sp(n))
         if self.done_count:
-            self.emit("log", msg=f"Resume: {self.done_count}/{self.total} segmen dah ada")
+            self.emit("log", msg=f"Resume: {self.done_count}/{self.total} segments already here")
 
         self.phase = "download"
         self.dl_start = time.time()
@@ -911,7 +911,7 @@ class DownloadJob:
             need = [n for n in range(1, self.total + 1) if self.states[n - 1] not in (2, 4)]
             if not need:
                 break
-            self.emit("log", msg=f"Round {rnd}: {len(need)} segmen")
+            self.emit("log", msg=f"Round {rnd}: {len(need)} segments")
             for n in need:
                 self.states[n - 1] = 0
             ex = cf.ThreadPoolExecutor(max_workers=self.workers)
@@ -926,16 +926,16 @@ class DownloadJob:
             if self.cancel_ev.is_set():
                 return self._stopped()
             fails = [n for n, ok in zip(need, results) if not ok]
-            self.emit("log", msg=f"Round {rnd} selesai, gagal: {len(fails)}")
+            self.emit("log", msg=f"Round {rnd} finished, failed: {len(fails)}")
             if fails and rnd < 3:
                 self._sleep(10)
         need = [n for n in range(1, self.total + 1) if self.states[n - 1] not in (2, 4)]
         if need:
-            return self._fail(f"{len(need)} segmen gagal kekal - tekan r untuk retry / tukar network")
+            return self._fail(f"{len(need)} segments still failing - press r to retry / change network")
         empty = [n for n in range(1, self.total + 1) if self.states[n - 1] == 4]
         if empty:
             gap = sum(float(ch.extinfs[n - 1]) for n in empty)
-            self.emit("log", msg=f"Nota: {len(empty)} segmen kosong dilangkau (lubang ~{gap:.0f}s dalam video)")
+            self.emit("log", msg=f"Note: {len(empty)} empty segments skipped (hole ~{gap:.0f}s in the video)")
 
         self.phase = "merge"
         self.emit("log", msg="Merge MP4...")
@@ -973,7 +973,7 @@ class DownloadJob:
                 pass
             return self._stopped()
         if p.returncode != 0:
-            return self._fail("ffmpeg gagal: " + " | ".join(tail[-3:]))
+            return self._fail("ffmpeg failed: " + " | ".join(tail[-3:]))
         self.merge_pct = 100.0
 
         verify = ""
@@ -984,9 +984,9 @@ class DownloadJob:
             try:
                 d = float(pr.stdout.strip())
                 ok = abs(d - dur) <= max(3, dur * 0.02)
-                verify = f"Verify: {d:.0f}s vs {dur:.0f}s " + ("OK ✓" if ok else "BEZA - video mungkin rosak ⚠")
+                verify = f"Verify: {d:.0f}s vs {dur:.0f}s " + ("OK ✓" if ok else "DIFFERENT - video may be broken ⚠")
             except ValueError:
-                verify = "Verify: ffprobe tak dapat baca tempoh ⚠"
+                verify = "Verify: ffprobe could not read the duration ⚠"
             self.emit("log", msg=verify)
 
         size = os.path.getsize(self.out)
@@ -1018,7 +1018,7 @@ def download_one_video(page, a, tag=""):
 
     parsed = parse_watch_url(page)
     if not parsed:
-        print(f"  URL tak sah: {page}")
+        print(f"  Invalid URL: {page}")
         return finish()
     tmdb, media_type, season, episode = parsed
     res["vid"] = str(tmdb) + (f"S{season}E{episode}" if season else "")
@@ -1027,23 +1027,23 @@ def download_one_video(page, a, tag=""):
     existing = [c for c in glob.glob(os.path.join(os.getcwd(), f"dl_framextv_{res['vid']}", "*.mp4"))
                 if os.path.getsize(c) > 0]
     if existing:
-        # Video dah ada, tapi subtitle tetap perlu diambil (fail berasingan)
-        log(f"Dah ada, skip video: {existing[0]}")
+        # Video already exists, but subtitles still need to be fetched (separate files)
+        log(f"Already exists, skip video: {existing[0]}")
         try:
             ch0 = Chain(page, a.quality)
-            # Video dah ada: picker subtitle tetap jalan (lepas kualiti)
+            # Video already exists: the subtitle picker still runs (after quality)
             selected0 = resolve_sub_selection(ch0, a)
             job0 = DownloadJob(page, ch0, a.workers, a.clean,
                                lambda kind, **kw: log(kw["msg"]) if kind == "log" else None,
                                no_subs=getattr(a, "no_subs", False),
                                selected_subs=selected0)
-            # Samakan nama output dengan fail sedia ada — kalau tak,
-            # subtitle disimpan ikut nama tajuk baru, player tak
-            # auto-load (laluan ni tak lalu DownloadJob._run).
+            # Match the output name to the existing file — otherwise,
+            # subtitles are saved under the new title's name, the player will not
+            # auto-load them (this path does not go through DownloadJob._run).
             job0.out = existing[0]
             subs = job0.download_subtitles()
         except Exception as e:
-            log(f"Subtitle gagal: {e}")
+            log(f"Subtitle failed: {e}")
             subs = []
         res.update(status="SKIPPED", size=os.path.getsize(existing[0]), path=existing[0], subs=subs)
         return finish()
@@ -1052,19 +1052,19 @@ def download_one_video(page, a, tag=""):
     try:
         ch = Chain(page, a.quality)
     except Exception as e:
-        log(f"Chain gagal: {e}")
+        log(f"Chain failed: {e}")
         return finish()
     res["quality"] = ch.chosen["quality"]
-    log(f"Metadata: {len(ch.seg_urls)} segmen, {res['quality']}" + (f", {ch.title}" if ch.title else ""))
-    log(f"Subtitle tersedia: {len(ch.all_subtitles)} track "
+    log(f"Metadata: {len(ch.seg_urls)} segments, {res['quality']}" + (f", {ch.title}" if ch.title else ""))
+    log(f"Subtitles available: {len(ch.all_subtitles)} tracks "
         f"(framextv {len(getattr(ch, 'fx_subtitles', []))} + movy {len(getattr(ch, 'movy_subtitles', []))})")
 
-    # LANGKAH 2 (selepas pilih resolution): pilih subtitle
+    # STEP 2 (after picking resolution): pick subtitles
     selected = resolve_sub_selection(ch, a)
     if getattr(a, "no_subs", False) or not selected:
-        log("Subtitle: tiada dipilih")
+        log("Subtitles: none picked")
     else:
-        log("Subtitle dipilih: " + ", ".join(f"{s['lang']} ({sub_display(s)})" for s in selected))
+        log("Subtitles picked: " + ", ".join(f"{s['lang']} ({sub_display(s)})" for s in selected))
 
     marks = set()
 
@@ -1076,7 +1076,7 @@ def download_one_video(page, a, tag=""):
             for q in (t // 4, t // 2, 3 * t // 4):
                 if q > 0 and d == q and q not in marks:
                     marks.add(q)
-                    log(f"{prefix}Segmen {d}/{t}")
+                    log(f"{prefix}Segment {d}/{t}")
 
     job = DownloadJob(page, ch, a.workers, a.clean, emit,
                       no_subs=getattr(a, "no_subs", False), selected_subs=selected)
@@ -1127,8 +1127,8 @@ if HAS_TEXTUAL:
         return ""
 
     class TuiHomeScreen(Screen):
-        BINDINGS = [("q", "app.quit", "Keluar"),
-                    ("escape", "clear_url", "Kosongkan")]
+        BINDINGS = [("q", "app.quit", "Quit"),
+                    ("escape", "clear_url", "Clear")]
 
         def __init__(self, start_url=""):
             super().__init__()
@@ -1140,12 +1140,12 @@ if HAS_TEXTUAL:
                 yield Static(build_logo(), id="logo")
                 yield Label("framextv HLS downloader · movy seed decrypt · auto refresh", id="tagline")
                 yield Static("", id="chips")
-                yield Input(placeholder="🔗  paste link framextv di sini…",
+                yield Input(placeholder="🔗  paste a framextv link here…",
                             id="url", value=self.start_url)
                 yield Label("", id="status")
                 yield Button("⬇  DOWNLOAD", id="yoink", variant="primary")
                 yield LoadingIndicator(id="spin")
-                yield Label("cth: https://framextv.cc/watch/335032/1/1", id="example")
+                yield Label("e.g. https://framextv.cc/watch/335032/1/1", id="example")
             yield Footer()
 
         def on_mount(self):
@@ -1164,7 +1164,7 @@ if HAS_TEXTUAL:
                 clip = read_clipboard_url()
                 if clip:
                     inp.value = clip
-                    self.query_one("#status", Label).update("📋 link diambil dari clipboard")
+                    self.query_one("#status", Label).update("📋 link taken from clipboard")
             inp.focus()
             home.styles.opacity = 0.0
             home.styles.animate("opacity", 1.0, duration=0.5)
@@ -1183,9 +1183,9 @@ if HAS_TEXTUAL:
             inp.set_class(bool(m), "valid")
             inp.set_class(bool(v) and not m, "invalid")
             if m:
-                st.update(f"[#9ece6a]✓ link sah · TMDB {m[0]}" + (f" S{m[2]}E{m[3]}" if m[2] else " (movie)") + "[/]")
+                st.update(f"[#9ece6a]✓ valid link · TMDB {m[0]}" + (f" S{m[2]}E{m[3]}" if m[2] else " (movie)") + "[/]")
             elif v:
-                st.update("[#e0af68]⚠ link mesti bentuk framextv.cc/watch/ID atau /movie/ID (tambah /season/ep untuk TV)[/]")
+                st.update("[#e0af68]⚠ link must be framextv.cc/watch/ID or /movie/ID (add /season/ep for TV)[/]")
             else:
                 st.update("")
 
@@ -1201,14 +1201,14 @@ if HAS_TEXTUAL:
             self.query_one("#yoink", Button).disabled = busy
             self.query_one("#url", Input).disabled = busy
             if busy:
-                self.query_one("#status", Label).update("[#7aa2f7]mengambil seed & sources…[/]")
+                self.query_one("#status", Label).update("[#7aa2f7]fetching seed & sources…[/]")
             elif msg:
                 self.query_one("#status", Label).update(msg)
 
         def submit(self):
             url = self.query_one("#url", Input).value.strip()
             if not parse_watch_url(url):
-                self.query_one("#status", Label).update("[#f7768e]✗ URL mesti bentuk framextv.cc/watch/<id> atau /movie/<id>[/]")
+                self.query_one("#status", Label).update("[#f7768e]✗ URL must be framextv.cc/watch/<id> or /movie/<id>[/]")
                 self.query_one("#url", Input).add_class("invalid")
                 return
             self.set_busy(True)
@@ -1223,7 +1223,7 @@ if HAS_TEXTUAL:
             self.app.call_from_thread(self.fetch_done, ch, url)
 
         def fetch_failed(self, msg):
-            self.set_busy(False, f"[#f7768e]✗ Gagal: {msg}[/]")
+            self.set_busy(False, f"[#f7768e]✗ Failed: {msg}[/]")
             self.query_one("#url", Input).focus()
 
         def fetch_done(self, ch, url):
@@ -1231,7 +1231,7 @@ if HAS_TEXTUAL:
             self.app.push_screen(TuiQualityScreen(ch, url))
 
     class TuiQualityScreen(Screen):
-        BINDINGS = [("q", "app.quit", "Keluar")]
+        BINDINGS = [("q", "app.quit", "Quit")]
 
         def __init__(self, ch, url):
             super().__init__()
@@ -1243,7 +1243,7 @@ if HAS_TEXTUAL:
             yield Header(show_clock=False)
             with Center():
                 with Vertical(id="box"):
-                    yield Label("Pilih kualiti:", id="qtitle")
+                    yield Label("Pick quality:", id="qtitle")
                     total_dur = sum(float(d) for d in self.ch.extinfs)
                     items = []
                     for v in self.ch.variants:
@@ -1252,7 +1252,7 @@ if HAS_TEXTUAL:
                             f"{v['quality']}   {len(self.ch.seg_urls)} seg · {total_dur:.0f}s{star}")))
                     yield ListView(*items, id="qlist")
                     yield LoadingIndicator(id="qspin")
-                    yield Label("↑↓ pilih · Enter download · 0-9 pantas · Esc kembali", id="hint")
+                    yield Label("↑↓ pick · Enter download · 0-9 quick · Esc back", id="hint")
             yield Footer()
 
         def on_mount(self):
@@ -1287,7 +1287,7 @@ if HAS_TEXTUAL:
                 return
             self.busy = True
             self.query_one("#qspin", LoadingIndicator).display = True
-            self.query_one("#hint", Label).update("Fetch semula untuk kualiti dipilih...")
+            self.query_one("#hint", Label).update("Re-fetching for the picked quality...")
             threading.Thread(target=self.rebuild, args=(v,), daemon=True).start()
 
         def rebuild(self, v):
@@ -1301,52 +1301,52 @@ if HAS_TEXTUAL:
         def rebuild_failed(self, msg):
             self.busy = False
             self.query_one("#qspin", LoadingIndicator).display = False
-            self.query_one("#hint", Label).update(f"Gagal: {msg}")
+            self.query_one("#hint", Label).update(f"Failed: {msg}")
 
         def rebuild_done(self, ch2):
             self.app.push_screen(TuiSubtitleScreen(ch2, self.url))
 
     class TuiSubtitleScreen(Screen):
-        """LANGKAH 2 (selepas pilih resolution): pilih subtitle.
-        Space/klik track = toggle track, Enter = mula download,
-        a = semua, n = tiada, d = mula download.
-        Enter atas track yang di-highlight tapi belum ditick akan
-        download track tu (bukan download tanpa subtitle) — kecuali
-        user dah tekan n (tiada) dulu. Klik butang MULA DOWNLOAD pula
-        ikut tick semasa (tiada tick + tiada n = track highlight).
-        Subtitle keluar sebagai .srt berasingan sebelah MP4, tak di-mux."""
-        BINDINGS = [("q", "app.quit", "Keluar"),
-                    ("a", "select_all", "Semua"),
-                    ("n", "select_none", "Tiada"),
-                    ("d", "start_download", "Mula download"),
-                    ("escape", "back", "Kembali")]
+        """STEP 2 (after picking resolution): pick subtitles.
+        Space/click a track = toggle track, Enter = start download,
+        a = all, n = none, d = start download.
+        Enter on a highlighted track that is not ticked yet will
+        download that track (not a download without subtitles) — unless
+        the user already pressed n (none). Clicking START DOWNLOAD instead
+        follows the current ticks (no ticks + no n = highlighted track).
+        Subtitles come out as separate .srt files next to the MP4, not muxed."""
+        BINDINGS = [("q", "app.quit", "Quit"),
+                    ("a", "select_all", "All"),
+                    ("n", "select_none", "None"),
+                    ("d", "start_download", "Start download"),
+                    ("escape", "back", "Back")]
 
         def __init__(self, ch, url):
             super().__init__()
             self.ch, self.url = ch, url
             self.selected = set()
-            # True hanya lepas user tekan n (tiada) — supaya fallback
-            # track-highlight dalam start() tak langgar niat "tiada".
+            # True only after the user presses n (none) — so the
+            # highlight fallback in start() does not override the "none" intent.
             self._explicit_none = False
 
         def compose(self) -> ComposeResult:
             yield Header(show_clock=False)
             with Center():
                 with Vertical(id="box"):
-                    yield Label("Pilih subtitle (fail .srt berasingan):", id="stitle")
+                    yield Label("Pick subtitles (separate .srt files):", id="stitle")
                     subs = getattr(self.ch, "all_subtitles", []) or []
                     if subs:
                         items = [ListItem(Label(self._item_text(i, s))) for i, s in enumerate(subs)]
                         yield ListView(*items, id="slist")
                     else:
-                        yield Label("Tiada subtitle untuk tajuk ni.", id="snone")
-                    yield Button("⬇  MULA DOWNLOAD", id="gostart", variant="primary")
-                    yield Label("Space/klik pilih · Enter mula download · a semua · n tiada · d mula · Esc kembali", id="hint")
+                        yield Label("No subtitles for this title.", id="snone")
+                    yield Button("⬇  START DOWNLOAD", id="gostart", variant="primary")
+                    yield Label("Space/click pick · Enter start download · a all · n none · d start · Esc back", id="hint")
             yield Footer()
 
         def on_mount(self):
-            # Fokus list supaya Enter/Space terus toggle; kalau tiada
-            # subtitle, fokus butang supaya Enter terus mula download.
+            # Focus the list so Enter/Space toggle right away; if there are no
+            # subtitles, focus the button so Enter starts the download right away.
             if self.query("#slist"):
                 self.query_one("#slist", ListView).focus()
             else:
@@ -1366,17 +1366,17 @@ if HAS_TEXTUAL:
             self._refresh()
 
         def on_key(self, event):
-            # BUG 2026-10-23: Enter dulu trigger ListView.Selected =
-            # toggle sahaja, download tak mula. Sekarang Enter = mula
-            # download (stop event supaya Selected/Button tak double).
-            # Disahkan pilot Textual 8.2.8: Enter atas list DAN atas
-            # butang dua-dua jadi satu start() sahaja, klik list masih
-            # Selected = toggle, klik butang masih Pressed = start.
+            # BUG 2026-10-23: Enter used to trigger ListView.Selected =
+            # toggle only, download never started. Now Enter = start
+            # download (stop the event so Selected/Button do not double-fire).
+            # Confirmed by the Textual 8.2.8 pilot: Enter on the list AND on
+            # the button both become a single start() only, list clicks still
+            # Selected = toggle, button clicks still Pressed = start.
             if event.key == "enter":
                 self.start()
                 event.stop()
-            # Space dalam ListView Textual tak trigger Selected — jadi
-            # tangkap sendiri supaya hint "Space toggle" betul-betul jalan.
+            # Space in a Textual ListView does not trigger Selected — so
+            # catch it here so the "Space toggle" hint really works.
             elif event.key == "space" and self.query("#slist"):
                 self._toggle(self.query_one("#slist", ListView).index)
                 event.stop()
@@ -1421,9 +1421,9 @@ if HAS_TEXTUAL:
             subs = getattr(self.ch, "all_subtitles", []) or []
             chosen = [subs[i] for i in sorted(self.selected) if i < len(subs)]
             if not chosen and not self._explicit_none and self.query("#slist"):
-                # Tiada tick tapi ada track di-highlight: download track
-                # tu, bukan video tanpa subtitle. Tekan n dulu kalau
-                # memang nak tiada subtitle.
+                # No ticks but a track is highlighted: download that
+                # track, not a video without subtitles. Press n first if
+                # you really want no subtitles.
                 idx = self.query_one("#slist", ListView).index
                 if idx is not None and idx < len(subs):
                     chosen = [subs[idx]]
@@ -1444,7 +1444,7 @@ if HAS_TEXTUAL:
         return False
 
     class SegGrid(Static):
-        """Heatmap segmen: hijau=siap, kuning=aktif, merah=gagal, kelabu=tunggu."""
+        """Segment heatmap: green=done, yellow=active, red=failed, grey=waiting."""
 
         def __init__(self, job, **kw):
             super().__init__("", **kw)
@@ -1486,7 +1486,7 @@ if HAS_TEXTUAL:
         return out
 
     class AddUrlScreen(ModalScreen):
-        BINDINGS = [("escape", "cancel_add", "Batal")]
+        BINDINGS = [("escape", "cancel_add", "Cancel")]
 
         def __init__(self, exclude=""):
             super().__init__()
@@ -1494,33 +1494,33 @@ if HAS_TEXTUAL:
 
         def compose(self) -> ComposeResult:
             with Vertical(id="addbox"):
-                yield Label("➕ Tambah ke queue", id="addtitle")
-                yield Input(placeholder="🔗  paste satu atau lebih link framextv…", id="addurl")
+                yield Label("➕ Add to queue", id="addtitle")
+                yield Input(placeholder="🔗  paste one or more framextv links…", id="addurl")
                 yield Label("", id="addstatus")
-                yield Label("Enter tambah · Esc batal", id="addhint")
+                yield Label("Enter add · Esc cancel", id="addhint")
 
         def on_mount(self):
             inp = self.query_one("#addurl", Input)
             clip = read_clipboard_url()
             if clip and clip != self.exclude:
                 inp.value = clip
-                self.query_one("#addstatus", Label).update("📋 diambil dari clipboard")
+                self.query_one("#addstatus", Label).update("📋 taken from clipboard")
             inp.focus()
 
         def on_input_changed(self, e: Input.Changed) -> None:
             n = len(extract_urls(e.value))
             st = self.query_one("#addstatus", Label)
             if n:
-                st.update(f"[#9ece6a]✓ {n} link sah[/]")
+                st.update(f"[#9ece6a]✓ {n} valid links[/]")
             elif e.value.strip():
-                st.update("[#e0af68]⚠ tiada link framextv /watch/<id> atau /movie/<id>[/]")
+                st.update("[#e0af68]⚠ no framextv /watch/<id> or /movie/<id> links[/]")
             else:
                 st.update("")
 
         def on_input_submitted(self, e: Input.Submitted) -> None:
             urls = extract_urls(e.value)
             if not urls:
-                self.query_one("#addstatus", Label).update("[#f7768e]✗ link tak sah[/]")
+                self.query_one("#addstatus", Label).update("[#f7768e]✗ invalid link[/]")
                 return
             self.dismiss(urls)
 
@@ -1528,21 +1528,21 @@ if HAS_TEXTUAL:
             self.dismiss(None)
 
     class TuiDownloadScreen(Screen):
-        BINDINGS = [("q", "app.quit", "Keluar"),
-                    ("a", "add_url", "Tambah video"),
+        BINDINGS = [("q", "app.quit", "Quit"),
+                    ("a", "add_url", "Add video"),
                     ("p", "toggle_pause", "Pause/Resume"),
                     ("c", "cancel", "Cancel"),
-                    ("n", "next_item", "Seterusnya"),
-                    ("x", "unqueue", "Buang akhir"),
+                    ("n", "next_item", "Next"),
+                    ("x", "unqueue", "Remove last"),
                     ("l", "toggle_log", "Log"),
                     ("r", "retry", "Retry"),
-                    ("o", "open_folder", "Buka folder"),
-                    ("d", "again", "Download lagi")]
+                    ("o", "open_folder", "Open folder"),
+                    ("d", "again", "Download again")]
 
-        PHASES = {"init": "⏳ Menyediakan…", "prepare": "🔎 Menyemak ruang disk…",
+        PHASES = {"init": "⏳ Preparing…", "prepare": "🔎 Checking disk space…",
                   "download": "⬇  Download",
                   "merge": "🎞  Merge MP4", "verify": "🔍 Verify video…",
-                  "subs": "💬 Subtitle…",
+                  "subs": "💬 Subtitles…",
                   "finished": ""}
         ICONS = {"done": "[#9ece6a]✓[/]", "failed": "[#f7768e]✗[/]", "stopped": "[#e0af68]■[/]",
                  "running": "[#7aa2f7]▶[/]", "fetching": "[#7aa2f7]…[/]", "waiting": "[#787c99]○[/]"}
@@ -1550,10 +1550,10 @@ if HAS_TEXTUAL:
         def __init__(self, ch, url, workers=8, selected_subs=None):
             super().__init__()
             self.ch, self.url, self.n_workers = ch, url, workers
-            # Pilihan subtitle dari skrin picker (None = semua, [] = tiada).
-            # Queue item seterusnya guna pilihan yang sama, tapi dipadan
-            # semula ikut bahasa pada tajuk tu (subs_for_selection dalam
-            # download_subtitles) — bukan URL tajuk pertama.
+            # Subtitle choice from the picker screen (None = all, [] = none).
+            # The next queue item uses the same choice, but it is rematched
+            # by language for that title (subs_for_selection in
+            # download_subtitles) — not the first title's URLs.
             self.selected_subs = selected_subs
             self.ev = __import__("queue").Queue()
             self.job = DownloadJob(url, ch, workers, True, self._emit,
@@ -1581,7 +1581,7 @@ if HAS_TEXTUAL:
                 yield Label("", id="dphase")
                 yield ProgressBar(total=self.job.total, show_eta=False, id="bar")
                 yield SegGrid(self.job, id="grid")
-                yield Label("[#9ece6a]■[/] siap  [#e0af68]■[/] aktif  [#f7768e]■[/] gagal  [#565f89]■[/] kosong  [#3b4261]■[/] tunggu", id="legend")
+                yield Label("[#9ece6a]■[/] done  [#e0af68]■[/] active  [#f7768e]■[/] failed  [#565f89]■[/] empty  [#3b4261]■[/] waiting", id="legend")
                 yield Sparkline(self.spark, summary_function=max, id="spark")
                 yield Label("", id="dstat")
                 yield Static("", id="queue")
@@ -1600,7 +1600,7 @@ if HAS_TEXTUAL:
             self.query_one("#dtitle", Label).update(f"⬇ {self.job.vid}" + (f"  ·  {title}" if title else ""))
             box = self.query_one("#dbox")
             box.border_title = f" {self.ch.chosen['quality']} "
-            box.border_subtitle = " a tambah · p pause · c cancel · l log "
+            box.border_subtitle = " a add · p pause · c cancel · l log "
 
         def _start(self):
             self.state = "running"
@@ -1647,11 +1647,11 @@ if HAS_TEXTUAL:
             open_path(os.path.dirname(self.job.out))
 
         def action_again(self):
-            # Stack sekarang: Home -> Kualiti -> Subtitle -> Download.
-            # Dulu pop 2x cukup (tiada skrin subtitle); sekarang kena
-            # pop 3x baru sampai Home — kalau pop 2x, user terdampar
-            # kat skrin kualiti tajuk LAMA dan boleh download tajuk
-            # lama semula tanpa sedar.
+            # Stack now: Home -> Quality -> Subtitle -> Download.
+            # Before, popping 2x was enough (no subtitle screen); now you must
+            # pop 3x to reach Home — if you pop 2x, the user lands
+            # on the OLD title's quality screen and could download the old
+            # title again without realising.
             for _ in range(3):
                 if len(self.app.screen_stack) > 1:
                     self.app.pop_screen()
@@ -1687,10 +1687,10 @@ if HAS_TEXTUAL:
                 active.add(vid)
                 added += 1
             if added:
-                self.app.notify(f"{added} video masuk queue" + (f" ({dup} duplikat dilangkau)" if dup else ""),
+                self.app.notify(f"{added} videos added to queue" + (f" ({dup} duplicates skipped)" if dup else ""),
                                 title="Queue")
             elif dup:
-                self.app.notify("Video tu dah ada dalam queue", severity="warning", title="Queue")
+                self.app.notify("That video is already in the queue", severity="warning", title="Queue")
             self.refresh_bindings()
 
         def action_next_item(self):
@@ -1701,7 +1701,7 @@ if HAS_TEXTUAL:
             for it in reversed(self.items):
                 if it["status"] == "waiting":
                     self.items.remove(it)
-                    self.app.notify(f"Dibuang dari queue: {it['vid']}", title="Queue")
+                    self.app.notify(f"Removed from queue: {it['vid']}", title="Queue")
                     break
             self.refresh_bindings()
 
@@ -1712,7 +1712,7 @@ if HAS_TEXTUAL:
             it["status"] = "fetching"
             self.advancing = True
             self.state = "fetching"
-            self.add_log(f"Seterusnya: {it['vid']} - ambil metadata…")
+            self.add_log(f"Next: {it['vid']} - fetching metadata…")
             self.refresh_bindings()
             threading.Thread(target=self._build_chain, args=(it, None),
                              daemon=True).start()
@@ -1728,7 +1728,7 @@ if HAS_TEXTUAL:
         def _chain_failed(self, it, msg):
             it["status"] = "failed"
             self.advancing = False
-            self.add_log(f"{it['vid']} gagal: {msg}")
+            self.add_log(f"{it['vid']} failed: {msg}")
             self.app.notify(f"{it['vid']}: {msg}", severity="error", title="Queue")
             self.state = "failed"
             self.refresh_bindings()
@@ -1762,9 +1762,9 @@ if HAS_TEXTUAL:
             d.set_class(err, "err")
             d.update(text)
             self.query_one("#dbox").border_subtitle = {
-                "done": " a tambah · o buka folder · d lagi · q keluar ",
-                "failed": " a tambah · r retry · d kembali · q keluar ",
-                "stopped": " a tambah · r resume · n seterusnya · q keluar "}.get(state, "")
+                "done": " a add · o open folder · d again · q quit ",
+                "failed": " a add · r retry · d back · q quit ",
+                "stopped": " a add · r resume · n next · q quit "}.get(state, "")
             self.refresh_bindings()
 
         def render_queue(self):
@@ -1778,13 +1778,13 @@ if HAS_TEXTUAL:
             fin = [i for i in self.items if i["status"] in ("done", "failed", "stopped")][-2:]
             act = [i for i in self.items if i["status"] in ("running", "fetching")]
             wait = [i for i in self.items if i["status"] == "waiting"]
-            lines = [f"[b]QUEUE[/b]  ·  {len(wait)} menunggu"]
+            lines = [f"[b]QUEUE[/b]  ·  {len(wait)} waiting"]
             for it in fin + act + wait[:5]:
                 t = escape((it.get("title") or "")[:30])
                 extra = "  [#787c99]menunggu[/]" if it["status"] == "waiting" else ""
                 lines.append(f" {self.ICONS[it['status']]} {it['vid']}  {t}{extra}")
             if len(wait) > 5:
-                lines.append(f"   [#787c99]+{len(wait) - 5} lagi…[/]")
+                lines.append(f"   [#787c99]+{len(wait) - 5} more…[/]")
             q.update("\n".join(lines))
 
         def tick(self):
@@ -1799,17 +1799,17 @@ if HAS_TEXTUAL:
                     elif kind == "done":
                         bar.update(total=100, progress=100)
                         vf = f"\n  {escape(kw['verify'])}" if kw.get("verify") else ""
-                        head = "Dah ada" if kw.get("skipped") else "✓ Siap"
+                        head = "Already exists" if kw.get("skipped") else "✓ Done"
                         self.cur_item["status"] = "done"
                         self._finish("done", f"{head}: {escape(kw['path'])}\n  Saiz: {fmt_size(kw['size'])}{vf}")
-                        self.app.notify("Download siap", title=job.vid)
+                        self.app.notify("Download done", title=job.vid)
                     elif kind == "error":
                         self.cur_item["status"] = "failed"
-                        self._finish("failed", f"✗ {escape(kw['msg'])}\n  Tekan r untuk retry", err=True)
+                        self._finish("failed", f"✗ {escape(kw['msg'])}\n  Press r to retry", err=True)
                     elif kind == "stopped":
                         self.cur_item["status"] = "stopped"
-                        extra = " · n untuk teruskan queue" if self._waiting() else ""
-                        self._finish("stopped", f"■ Dihentikan. Tekan r untuk resume{extra}")
+                        extra = " · n to continue the queue" if self._waiting() else ""
+                        self._finish("stopped", f"■ Stopped. Press r to resume{extra}")
             except _q.Empty:
                 pass
 
@@ -1831,16 +1831,16 @@ if HAS_TEXTUAL:
             if running:
                 txt = self.PHASES.get(job.phase, "")
                 if not job.run_ev.is_set():
-                    txt = "⏸  Dijeda  (tekan p untuk sambung)"
+                    txt = "⏸  Paused  (press p to resume)"
                 if self.cancelling:
-                    txt = "⏹  Membatalkan…"
+                    txt = "⏹  Cancelling…"
                 if job.phase == "merge":
                     txt += f"  {job.merge_pct:.0f}%"
                 lab.update(txt)
             elif self.state == "fetching":
-                lab.update("🔎 Menyediakan video seterusnya dalam queue…")
+                lab.update("🔎 Preparing the next video in the queue…")
             else:
-                lab.update({"done": "✓ Selesai", "failed": "✗ Gagal", "stopped": "■ Dihentikan"}.get(self.state, ""))
+                lab.update({"done": "✓ Done", "failed": "✗ Failed", "stopped": "■ Stopped"}.get(self.state, ""))
 
             spd = job.speed() if running else 0.0
             self.tick_n += 1
@@ -1855,7 +1855,7 @@ if HAS_TEXTUAL:
                 f"{job.done_count}/{job.total} seg · {fmt_size(job.bytes_done)}"
                 + (f" / ~{fmt_size(est)}" if est else "")
                 + f" · {spd / 1e6:.1f} MB/s · ETA {eta_s}\n"
-                f"{self.n_workers} workers · refresh ♻ {max(self.ch.gen - 1, 0)}× · gagal {failed}")
+                f"{self.n_workers} workers · refresh ♻ {max(self.ch.gen - 1, 0)}× · failed {failed}")
             self.query_one("#grid", SegGrid).refresh_grid()
             self.render_queue()
 
@@ -1978,27 +1978,27 @@ if HAS_TEXTUAL:
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Framextv HLS downloader — mod interaktif + batch queue")
+    ap = argparse.ArgumentParser(description="Framextv HLS downloader — interactive mode + batch queue")
     ap.add_argument("page", nargs="*", default=[],
-                    help="satu atau lebih URL framextv (kosongkan utk mod interaktif)")
-    ap.add_argument("--quality", type=int, help="tinggi maksimum, cth 720 (default: tertinggi)")
+                    help="one or more framextv URLs (leave empty for interactive mode)")
+    ap.add_argument("--quality", type=int, help="maximum height, e.g. 720 (default: highest)")
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--clean", dest="clean", action="store_true", default=True,
-                    help="padam segmen selepas siap (ini default sekarang)")
+                    help="delete segments after finishing (this is now the default)")
     ap.add_argument("--no-clean", dest="clean", action="store_false",
-                    help="SIMPAN segmen .ts selepas siap (untuk debug sahaja)")
+                    help="KEEP .ts segments after finishing (debug only)")
     ap.add_argument("--parallel", type=int, default=1,
-                    help="bilangan video download serentak (default: 1 = satu-persatu)")
-    ap.add_argument("--no-subs", action="store_true", help="jangan download subtitle (= --subs none)")
+                    help="number of videos to download at once (default: 1 = one by one)")
+    ap.add_argument("--no-subs", action="store_true", help="do not download subtitles (= --subs none)")
     ap.add_argument("--subs", default=None,
-                    help="pilih subtitle tanpa prompt: all | none | kod dipisah koma (ms,en,id) | nombor (0,5). "
-                         "Kalau tak diberi: interaktif prompt per video; parallel/bukan-tty = tiada")
+                    help="pick subtitles without a prompt: all | none | comma-separated codes (ms,en,id) | numbers (0,5). "
+                         "If not given: interactive prompt per video; parallel/non-tty = none")
     a = ap.parse_args()
 
     if not shutil.which("ffmpeg"):
-        sys.exit("ffmpeg tiada dalam PATH")
+        sys.exit("ffmpeg is not in PATH")
     if not HAS_REQUESTS:
-        sys.exit("perlu 'pip install requests' (seed diikat pada connection)")
+        sys.exit("needs 'pip install requests' (seed is tied to the connection)")
 
     pages = list(a.page)
     interactive = not pages
@@ -2006,9 +2006,9 @@ def main():
         run_tui()
         return
     if interactive and not HAS_TEXTUAL:
-        print("Nota: TUI perlukan 'pip install textual' — guna mod CLI buat sementara.")
+        print("Note: the TUI needs 'pip install textual' — use CLI mode for now.")
     if interactive:
-        print("Masukkan URL framextv (satu per baris, baris kosong = mula download):")
+        print("Enter framextv URLs (one per line, empty line = start download):")
         while True:
             try:
                 u = input("> ").strip()
@@ -2018,30 +2018,30 @@ def main():
             if not u:
                 break
             pages.append(u)
-        a.quality = pick_numbered("Pilih kualiti:", [
-            ("Auto (paling tinggi)", None),
+        a.quality = pick_numbered("Pick quality:", [
+            ("Auto (highest)", None),
             ("720p", 720),
             ("480p", 480),
             ("360p", 360),
         ], default=0)
-        a.workers = pick_numbered("Pilih workers (download serentak):", [
+        a.workers = pick_numbered("Pick workers (parallel downloads):", [
             ("8 (default)", 8),
-            ("4 (selamat, elak throttle)", 4),
-            ("16 (laju, risiko throttle)", 16),
+            ("4 (safe, avoids throttling)", 4),
+            ("16 (fast, throttling risk)", 16),
         ], default=0)
     pages = [p for p in pages if parse_watch_url(p)]
     if not pages:
-        sys.exit("Tiada URL sah diberikan.")
+        sys.exit("No valid URLs given.")
 
     if a.parallel and a.parallel > 1:
         if a.subs is None and not a.no_subs:
-            print("Nota: mod parallel tanpa --subs -> subtitle dilangkau "
-                  "(prompt tak boleh berebut stdin). Guna --subs ms,en,id untuk auto-pilih.")
-        # Mod serentak: setiap video satu job bebas (folder/state/emit sendiri).
-        # Workers dibahagi supaya jumlah connection kekal ~8 (elak throttle).
+            print("Note: parallel mode without --subs -> subtitles are skipped "
+                  "(prompts cannot fight over stdin). Use --subs ms,en,id to auto-pick.")
+        # Parallel mode: each video gets its own job (own folder/state/emit).
+        # Workers are split so total connections stay ~8 (avoid throttling).
         per_workers = max(2, a.workers // a.parallel)
-        print(f"{len(pages)} video, {a.parallel} serentak, {per_workers} workers setiap video "
-              f"(jumlah ~{per_workers * a.parallel} connection)...", flush=True)
+        print(f"{len(pages)} videos, {a.parallel} at once, {per_workers} workers per video "
+              f"(total ~{per_workers * a.parallel} connections)...", flush=True)
 
         def run_one(pg):
             import copy as _copy
@@ -2055,11 +2055,11 @@ def main():
             results = list(ex.map(run_one, pages))
         ok = sum(1 for r in results if r["status"] in ("SUCCESS", "SKIPPED"))
         fail = [r["vid"] for r in results if r["status"] not in ("SUCCESS", "SKIPPED")]
-        print(f"\nSELESAI: {ok} berjaya, {len(fail)} gagal"
+        print(f"\nDONE: {ok} succeeded, {len(fail)} failed"
               + (f" ({', '.join(fail)})" if fail else ""), flush=True)
         return
 
-    print(f"{len(pages)} video dalam queue. Mula download satu-persatu...", flush=True)
+    print(f"{len(pages)} videos in queue. Downloading one by one...", flush=True)
     ok, fail = 0, []
     for i, pg in enumerate(pages, 1):
         parsed = parse_watch_url(pg)
@@ -2070,13 +2070,13 @@ def main():
         if st == "SUCCESS" or st == "SKIPPED":
             ok += 1
         elif st == "STOPPED":
-            ans = input("Teruskan ke video seterusnya? [y/N] ").strip().lower()
+            ans = input("Continue to the next video? [y/N] ").strip().lower()
             fail.append(f"{vid} (dihentikan)")
             if ans != "y":
                 break
         else:
             fail.append(vid)
-    print(f"\nSELESAI: {ok} berjaya, {len(fail)} gagal"
+    print(f"\nDONE: {ok} succeeded, {len(fail)} failed"
           + (f" ({', '.join(fail)})" if fail else ""), flush=True)
 
 
